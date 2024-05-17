@@ -1,0 +1,8 @@
+appConfig:
+  apiPrefix: /api
+  port: 8080
+  debug: true
+redis:
+  enabled : true
+  addr: redis:6379
+  prefix: food

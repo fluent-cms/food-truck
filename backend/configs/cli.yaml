@@ -1,0 +1,4 @@
+redis:
+  enabled : true
+  addr: redis:6379
+  prefix: food
