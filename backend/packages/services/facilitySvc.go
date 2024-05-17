@@ -51,7 +51,7 @@ func (t *FacilitySvc) Seed(p string) error {
 	ctx := context.Background()
 	facilities, err := t.readCSV(p)
 	if err != nil {
-		return err
+		return annotate.Errorf("Fail to read csv %w", err)
 	}
 	t.getCenter(facilities)
 	if err = t.cacheFacilities(ctx, facilities); err != nil {
@@ -76,7 +76,7 @@ func (t *FacilitySvc) getCenter(facilities []models.Facility) {
 func (t *FacilitySvc) cacheLocations(ctx context.Context, facilities []models.Facility) error {
 	for _, facility := range facilities {
 		if err := t.GeoFacilityStore.Add(ctx, facility); err != nil {
-			return err
+			return annotate.Errorf("Fail to seed location data", err)
 		}
 	}
 	return nil
@@ -87,7 +87,7 @@ func (t *FacilitySvc) cacheFoodItems(ctx context.Context, facilities []models.Fa
 		for _, item := range strings.Split(facility.FoodItems, ":") {
 			item = strings.TrimSpace(item)
 			if err := t.ItemFacilityStore.AddMem(ctx, item, []models.Facility{facility}); err != nil {
-				return err
+				return annotate.Errorf("Fail to seed food items, %w", err)
 			}
 		}
 	}

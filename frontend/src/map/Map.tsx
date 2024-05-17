@@ -8,7 +8,7 @@ import {Button} from "primereact/button";
 import {SwitchLocation} from "./SwitchLocation";
 
 export default function Map() {
-    const {data: center, error, isLoading} = useSWR(Config.APIHost + '/api/facilities/center', fetcher)
+    const {data: center} = useSWR(Config.APIHost + '/api/facilities/center', fetcher)
     const [your, setYour] = useState(false)
 
     return (
