@@ -53,6 +53,21 @@ and inject the implementation to service.
 This also conform to Open/Close principle, the facilitySvc is open to extend functionality, 
 but close to code change
 
+- *Separation of Concern*
+
+When do frontend coding, I also tried to apply this principle, for the truck map frontend.
+I use 3 components to render map (Map, FacilityMaker, SwitchLocation), each component care about it's own job, improved readability.
+
+- *Modular and DRY - Don't repeat your self*
+
+I aimed to separate business logic from infrastructure code in our project. Taking the `facilitySvc` as an example:
+each facility can have multiple food items, and each food item can be associated with multiple facilities.
+This relationship pertains to business logic. In contrast, connecting to Redis and marshalling objects to JSON strings are common infrastructure tasks.
+
+By wrapping Redis operations into a standalone package, instead of embedding this code within the facility service,
+I made the codebase more modular and reusable. This separation improves maintainability and allows infrastructure code
+to be reused across different services without duplication.
+
 - *Template pattern*
 
 There are a lot of boilerplate to start a web application, 
@@ -67,40 +82,27 @@ In production mode, the API just return an 500 error to hide technical detail
 
 - *Generic Programming to improve ability to reuse code*
 
-A function gets a key from Redis, then use json.unmarshal 
-to convert it to an object, A straightforward implementation is:
+For example, the parse function in /backend/packages/util/yaml.go demonstrates how to create a reusable utility for parsing 
+YAML files into any specified type. By using generics, we can create a single, versatile function that works with 
+any data structure, enhancing our ability to write clean, reusable, and maintainable code.
 ```
-str := redis.Get(myKey)
-var object MyObject
-if err := json.Unmarshal([]byte(str), &object); err != nil{
-  return error
+func parse[T any](t *T, filePath string) (err error) {
+	var f *os.File
+	f, err = os.Open(filePath)
+	if err != nil {
+		return
+	}
+	defer func(f *os.File) {
+		err = f.Close()
+	}(f)
+
+	if err = yaml.NewDecoder(f).Decode(t); err != nil {
+		return err
+	}
+	return nil
 }
-```
-by using generic
-```
-var myObjectStore := rdb.NewEntityStore[string, MyObject]()
+ ```
 
-object,err := myObjectStore.Get(myKey)
-```
-the benefit of wrap redis str as EntityStore is : 1) save the trouble of write boilerplate 
-code. 2) it ensures type safe, if I try to get MySecondObject from myObjectStore, I will get
-a compile time error.
-
-- *Separation of Concern*
-
-When do frontend coding, I also tried to apply this principle, for the truck map frontend.
-I use 3 components to render map, each component care about it's own job, improved readability.
-  * /frontend/src/map/Map.tsx
-  * /frontend/src/map/FacilityMarker.tsx
-  * /frontend/src/map/SwitchLocation.tsx
-
-- *Modular and DRY - Don't repeat your self*
-
-I tired to separate business logic and infrastructure code. Take facilitySvc as example
-each facility has multiple food items, each food item can match multiple facility, this relationships 
-is business related, but connect to redis, marshal object to json string, are common infrastructure code. 
-By warping redis operation as a standalone package instead of put code to facility service. 
-I make the code more modular and easy to re-use.
 
 ## Implementations
 ### Frontend
@@ -124,17 +126,22 @@ the useSWR hook combine api call and state management, one single line of code s
     const {data: center} = useSWR(Config.APIHost + '/api/facilities/center', fetcher)
 ```
 #### Environment variables
+The frontend app might run in two mode 
+##### Development Mode 
 In development mode (pnpm dev), I start two web server, 
-* http://localhost:8080 as backend   
-* http://localhost:5173 as frontend
- 
-In production mode frontend and backend are served as single app, so I can 
-use relative path to call backend api /api/facilities. In development, I have to add
-a prefix http://localhost:8080 in front of endpoint. I put this settings to .env.development
+http://localhost:8080 as backend  http://localhost:5173 as frontend, so the api endpoint is http://localhost:8080/api/***.
+  I put this dev environment settings to .env.development
 ```
 VITE_REACT_APP_API_HOST='http://localhost:8080'
 ```
-In production there won't be .env file, so the api host default to '', this code is put to config.ts 
+##### Production Mode
+In production mode frontend and backend are served as single app(the distribution of frontend is copied to 
+/backend/web, and served by backend web server). 
+I can use relative path to call backend api /api/facilities. In production there won't be .env file, 
+so the api host default to empty string''. 
+
+##### config.js
+All environment reading code are put into config.ts , ensure single source of truth.
 ```
 export const Config = {
     APIHost : import.meta.env.VITE_REACT_APP_API_HOST || '',
@@ -155,7 +162,7 @@ to use react-leaflet
 ----models/      
 ----services/     # implement business logic of food trucks
 ----utils/        # infrastrcutres
---web/            # put frontend distribution hear
+--web/            # put frontend distribution here
 ```
 #### Seed Data
 In packages/services/facilitySvc Seed() function, it read configs/data.csv, and parse it as Facility array,
@@ -169,9 +176,46 @@ then populate the data to redis.
 
 ## Installation
 If you don't have go, node, pnpm installed on you local machine, you can simply use docker compose to start the app.
+### Docker 
 in the root directory of the project, run
 ```shell
 docker-compose up
+```
+When you see messages similar to below, then the app is up.
+```shell
+food-truck-backend-1  | Now listening on:
+food-truck-backend-1  | > Network:  http://172.21.0.3:8080
+food-truck-backend-1  | > Local:    http://localhost:8080
+food-truck-backend-1  | Application started. Press CTRL+C to shut down.
+```
+### Web
+Use your browser, go to http://localhost:8080 to see the food truck app.
+### Cli
+to run cli
+```shell
+# use docker ps to check docker container name
+⚡➜ ~ docker ps
+CONTAINER ID   IMAGE                COMMAND                  CREATED         STATUS         PORTS                    NAMES
+0f6039ec90d6   food-truck-backend   "./main"                 5 minutes ago   Up 5 minutes   0.0.0.0:8080->8080/tcp   food-truck-backend-1
+40f20e7696e4   redis:latest         "docker-entrypoint.s…"   5 minutes ago   Up 5 minutes   0.0.0.0:6379->6379/tcp   food-truck-redis-1
+
+# start a shell session
+⚡➜ ~ docker exec -it food-truck-backend-1 /bin/bash
+
+# in the shell session,  run ./food-cli
+root@0f6039ec90d6:/go/src/app# ./food-cli
+Load Config from  ./configs/cli.yaml
+
+# when you saw the 'Enter Food Item to search facility:', input a food item you want to find
+Enter Food Item to search facility: breakfast
+Munch A Bunch MISSION ST: 14TH ST to 15TH ST (1800 - 1899)
+Munch A Bunch BRYANT ST: ALAMEDA ST intersection
+Munch A Bunch FULTON ST: FRANKLIN ST to GOUGH ST (300 - 399)
+Munch A Bunch LARKIN ST: FERN ST to BUSH ST (1127 - 1199)
+Munch A Bunch 12TH ST: ISIS ST to BERNICE ST (332 - 365)
+Munch A Bunch 07TH ST: CLEVELAND ST to HARRISON ST (314 - 399)
+Munch A Bunch PARNASSUS AVE: HILLWAY AVE to 03RD AVE (400 - 599)
+Munch A Bunch 17TH ST: SAN BRUNO AVE to UTAH ST (2200 - 2299)
 ```
 
 ## Development
@@ -184,11 +228,11 @@ go to /backend,
 ```shell
 go run backend/cmds/web/main.go
 ```
-if you got the following error 
+if you got the following error, it means backend can not connect to a host 'redis'
 ```
 panic: facilitySvc.go:58 failed to cache facilities, dial tcp: lookup redis: no such host
 ```
-you can add redis to you development machine's /etc/hosts file
+you can add 'redis' to you development machine's /etc/hosts file
 ```
 127.0.0.1       localhost redis
 ```
@@ -204,7 +248,7 @@ to
 ```
 go run backend/cmds/cli/main.go
 ```
-it's config file is at /backend/configs/cli.yaml
+Cli's config file is at /backend/configs/cli.yaml
 
 ### Start Frontend
 you need to install node, pnpm, then go to frontend/, run
