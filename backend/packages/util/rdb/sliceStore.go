@@ -3,7 +3,7 @@ package rdb
 import (
 	"context"
 	"fmt"
-	"food-trucks/packages/util/annotate"
+	"food-trucks/packages/util/errs"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 	"golang.org/x/exp/constraints"
@@ -61,7 +61,7 @@ func (s *SliceStore[K, V]) DelMember(ctx context.Context, sliceID any, memberKey
 func (s *SliceStore[K, Entity]) AddMem(ctx context.Context, sliceID any, items []Entity) error {
 	key := s.sliceKey(sliceID)
 	if err := s.entityStore.Set(ctx, items); err != nil {
-		return annotate.Error(err)
+		return errs.Err(err)
 	}
 	members := make([]redis.Z, len(items))
 	for i, item := range items {
@@ -83,11 +83,11 @@ func (s *SliceStore[K, Entity]) GetAllMemberEntities(ctx context.Context, sliceI
 	p := s.client.Pipeline()
 	memCmd := p.ZRevRangeByScore(ctx, key, option)
 	if _, err := p.Exec(ctx); IgnoreNoKey(err) != nil {
-		return nil, annotate.Error(err)
+		return nil, errs.Err(err)
 	}
 	items, err := s.getEntities(ctx, memCmd.Val())
 	if err != nil {
-		return nil, annotate.Error(err)
+		return nil, errs.Err(err)
 	}
 
 	return items, nil
@@ -98,7 +98,7 @@ func (s *SliceStore[K, V]) getEntities(ctx context.Context, members []string) ([
 	for _, mem := range members {
 		memberK, err := keyFromStar[K](mem)
 		if err != nil {
-			return nil, annotate.Error(err)
+			return nil, errs.Err(err)
 		}
 		memberKeys = append(memberKeys, memberK)
 	}
